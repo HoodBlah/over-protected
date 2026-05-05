@@ -1,0 +1,32 @@
+{
+  "container.overprotected.helmet_strap": "Helmet Strap",
+  "container.overprotected.chestplate_strap": "Chestplate Strap",
+  "container.overprotected.leggings_strap": "Leggings Strap",
+  "container.overprotected.boots_strap": "Boots Strap",
+
+  "item.overprotected.leather_helmet_strap": "Leather Helmet Strap",
+  "item.overprotected.leather_chestplate_strap": "Leather Chestplate Strap",
+  "item.overprotected.leather_leggings_strap": "Leather Leggings Strap",
+  "item.overprotected.leather_boots_strap": "Leather Boots Strap",
+
+  "item.overprotected.iron_helmet_strap": "Iron Helmet Strap",
+  "item.overprotected.iron_chestplate_strap": "Iron Chestplate Strap",
+  "item.overprotected.iron_leggings_strap": "Iron Leggings Strap",
+  "item.overprotected.iron_boots_strap": "Iron Boots Strap",
+
+  "item.overprotected.golden_helmet_strap": "Golden Helmet Strap",
+  "item.overprotected.golden_chestplate_strap": "Golden Chestplate Strap",
+  "item.overprotected.golden_leggings_strap": "Golden Leggings Strap",
+  "item.overprotected.golden_boots_strap": "Golden Boots Strap",
+
+  "item.overprotected.diamond_helmet_strap": "Diamond Helmet Strap",
+  "item.overprotected.diamond_chestplate_strap": "Diamond Chestplate Strap",
+  "item.overprotected.diamond_leggings_strap": "Diamond Leggings Strap",
+  "item.overprotected.diamond_boots_strap": "Diamond Boots Strap",
+
+  "item.overprotected.netherite_helmet_strap": "Netherite Helmet Strap",
+  "item.overprotected.netherite_chestplate_strap": "Netherite Chestplate Strap",
+  "item.overprotected.netherite_leggings_strap": "Netherite Leggings Strap",
+  "item.overprotected.netherite_boots_strap": "Netherite Boots Strap",
+  "itemGroup.overprotected.straps": "Armor Straps"
+}

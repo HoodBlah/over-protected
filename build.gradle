@@ -1,0 +1,73 @@
+plugins {
+    id 'java-library'
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.neoforged.gradle.userdev' version '7.0.145'
+}
+
+version = '1.0.0'
+group = 'com.overprotected'
+
+base {
+    archivesName = 'overprotected'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    maven { url = 'https://maven.neoforged.net/releases' }
+}
+
+dependencies {
+    implementation "net.neoforged:neoforge:21.1.86"
+}
+
+runs {
+    configureEach {
+        systemProperty 'forge.enabledGameTestNamespaces', 'overprotected'
+        modSource project.sourceSets.main
+    }
+    client {}
+    server {
+        programArgument '--nogui'
+    }
+    data {
+        programArguments.addAll '--mod', 'overprotected', '--all',
+            '--output', file('src/generated/resources/').absolutePath,
+            '--existing', file('src/main/resources/').absolutePath
+    }
+}
+
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+            minecraft_version      : '1.21.1',
+            minecraft_version_range: '[1.21.1,1.22)',
+            neo_version            : '21.1.86',
+            neo_version_range      : '[21.1,)',
+            loader_version_range   : '[4,)',
+            mod_id                 : 'overprotected',
+            mod_name               : 'Over Protected',
+            mod_license            : 'MIT',
+            mod_version            : version,
+            mod_authors            : 'moote',
+            mod_description        : 'Equip multiple armor pieces at once using Straps!'
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
+    }
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven { url "file://${project.projectDir}/mcmodsrepo" }
+    }
+}

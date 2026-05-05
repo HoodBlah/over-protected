@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "SSS",
+    "SAS",
+    "SSS"
+  ],
+  "key": {
+    "S": {"item": "minecraft:string"},
+    "A": {"item": "minecraft:golden_helmet"}
+  },
+  "result": {
+    "id": "overprotected:golden_helmet_strap",
+    "count": 1
+  }
+}

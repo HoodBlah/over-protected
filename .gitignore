@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# NeoGradle / ForgeGradle caches
+runs/
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
