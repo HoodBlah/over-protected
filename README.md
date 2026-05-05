@@ -1,12 +1,12 @@
 # Over Protected
 
-A [NeoForge](https://neoforged.net/) mod for Minecraft 1.21.1 that adds **Armor Straps** — wearable items that let you equip multiple pieces of the same armor type in a single slot, combining all of their stats.
+A [NeoForge](https://neoforged.net/) mod for Minecraft 1.21.1 that adds **Armor Straps**.  Wearable items that let you equip multiple pieces of the same armor type in a single slot, combining all of their stats.
 
 ---
 
 ## How It Works
 
-Armor Straps are worn in the normal helmet, chestplate, leggings, or boots slot. Right-click one to open its inventory, then fill it with armor pieces of the matching type. The strap adds up the armor, toughness, knockback resistance, and enchantments from every stored piece and applies the total to your character — while visually rendering the first stored piece's texture on your body.
+Armor Straps are worn in the normal helmet, chestplate, leggings, or boots slot. Right-click one to open its inventory, then fill it with armor pieces of the matching type. The strap adds up the armor, toughness, knockback resistance, and enchantments from every stored piece and applies the total to your character, while visually rendering the first stored piece's texture on your body.
 
 ---
 
