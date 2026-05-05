@@ -23,6 +23,7 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.entity.ai.attributes.Attribute;import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -232,6 +233,52 @@ public class StrapInventory implements Container {
         }
 
         strapStack.set(DataComponents.ATTRIBUTE_MODIFIERS, modBuilder.build());
+    }
+
+    /**
+     * Damages every stored armor piece by {@code amount}, mirroring vanilla's
+     * per-slot armor-durability formula. If any item breaks the strap stats are
+     * recomputed via {@link #writeToStack()}; otherwise only the item list is
+     * persisted so the heavier stat-recompute is avoided.
+     */
+    public void applyArmorDamage(int amount, net.minecraft.world.entity.LivingEntity entity, EquipmentSlot strapSlot) {
+        if (amount <= 0) return;
+        boolean anyBroke = false;
+        for (int i = 0; i < size; i++) {
+            ItemStack stored = items.get(i);
+            if (stored.isEmpty() || !stored.isDamageableItem()) continue;
+            stored.hurtAndBreak(amount, entity, strapSlot);
+            if (stored.isEmpty()) {
+                items.set(i, ItemStack.EMPTY);
+                anyBroke = true;
+            }
+        }
+        if (anyBroke) {
+            writeToStack();
+        } else {
+            saveItemsOnly();
+        }
+    }
+
+    /**
+     * Persists only the item list (slot positions and damage values) back into
+     * the strap's {@code custom_data} without recomputing attribute modifiers,
+     * enchantments, or the {@code FirstArmorKey}. Use when content didn't change
+     * but individual items were damaged.
+     */
+    public void saveItemsOnly() {
+        CustomData existing = strapStack.get(DataComponents.CUSTOM_DATA);
+        CompoundTag rootTag = existing != null ? existing.copyTag() : new CompoundTag();
+        ListTag list = new ListTag();
+        for (int i = 0; i < size; i++) {
+            ItemStack stored = items.get(i);
+            if (stored.isEmpty()) continue;
+            CompoundTag entry = new CompoundTag();
+            entry.putByte("Slot", (byte) i);
+            list.add(stored.save(registries, entry));
+        }
+        rootTag.put(NBT_KEY, list);
+        strapStack.set(DataComponents.CUSTOM_DATA, CustomData.of(rootTag));
     }
 
     /** Type-safe helper: copies a single component onto a target stack. */

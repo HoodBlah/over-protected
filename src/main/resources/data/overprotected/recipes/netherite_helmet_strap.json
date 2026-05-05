@@ -2,15 +2,15 @@
   "type": "minecraft:crafting_shaped",
   "pattern": [
     "SSS",
-    "SAS",
+    "PAS",
     "SSS"
   ],
   "key": {
     "S": {"item": "minecraft:string"},
-    "A": {"item": "minecraft:netherite_helmet"}
+    "A": {"item": "minecraft:netherite_helmet"},
+    "P": {"item": "overprotected:diamond_helmet_strap"}
   },
   "result": {
-    "id": "overprotected:netherite_helmet_strap",
-    "count": 1
+    "id": "overprotected:netherite_helmet_strap"
   }
 }

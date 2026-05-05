@@ -2,15 +2,15 @@
   "type": "minecraft:crafting_shaped",
   "pattern": [
     "SSS",
-    "SAS",
+    "PAS",
     "SSS"
   ],
   "key": {
     "S": {"item": "minecraft:string"},
-    "A": {"item": "minecraft:diamond_leggings"}
+    "A": {"item": "minecraft:diamond_leggings"},
+    "P": {"item": "overprotected:golden_leggings_strap"}
   },
   "result": {
-    "id": "overprotected:diamond_leggings_strap",
-    "count": 1
+    "id": "overprotected:diamond_leggings_strap"
   }
 }

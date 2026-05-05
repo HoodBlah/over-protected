@@ -2,7 +2,7 @@
   "type": "minecraft:crafting_shaped",
   "pattern": [
     "SSS",
-    "SAS",
+    " AS",
     "SSS"
   ],
   "key": {
@@ -10,7 +10,6 @@
     "A": {"item": "minecraft:leather_leggings"}
   },
   "result": {
-    "id": "overprotected:leather_leggings_strap",
-    "count": 1
+    "id": "overprotected:leather_leggings_strap"
   }
 }

@@ -2,15 +2,15 @@
   "type": "minecraft:crafting_shaped",
   "pattern": [
     "SSS",
-    "SAS",
+    "PAS",
     "SSS"
   ],
   "key": {
     "S": {"item": "minecraft:string"},
-    "A": {"item": "minecraft:golden_boots"}
+    "A": {"item": "minecraft:golden_boots"},
+    "P": {"item": "overprotected:iron_boots_strap"}
   },
   "result": {
-    "id": "overprotected:golden_boots_strap",
-    "count": 1
+    "id": "overprotected:golden_boots_strap"
   }
 }
