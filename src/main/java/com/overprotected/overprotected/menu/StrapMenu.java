@@ -151,7 +151,7 @@ public class StrapMenu extends AbstractContainerMenu {
         strapInventory.writeToStack();
 
         ItemStack strapStack = strapInventory.getStrapStack();
-        StrapItem strapItem  = (StrapItem) strapStack.getItem();
+        if (strapStack.isEmpty() || !(strapStack.getItem() instanceof StrapItem strapItem)) return;
         EquipmentSlot equipSlot = strapItem.getArmorType().getSlot();
 
         if (player.getItemBySlot(equipSlot) != strapStack) {

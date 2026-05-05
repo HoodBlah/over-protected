@@ -2,12 +2,13 @@
   "type": "minecraft:crafting_shaped",
   "pattern": [
     "SSS",
-    " AS",
+    "LAS",
     "SSS"
   ],
   "key": {
     "S": {"item": "minecraft:string"},
-    "A": {"item": "minecraft:leather_boots"}
+    "A": {"item": "minecraft:leather_boots"},
+    "L": {"item": "minecraft:leather"}
   },
   "result": {
     "id": "overprotected:leather_boots_strap"

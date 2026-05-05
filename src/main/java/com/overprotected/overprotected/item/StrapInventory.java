@@ -94,6 +94,8 @@ public class StrapInventory implements Container {
     }
 
     public void writeToStack() {
+        // Guard: if the stack was cleared (e.g. player disconnected mid-session) bail out.
+        if (strapStack.isEmpty() || !(strapStack.getItem() instanceof StrapItem)) return;
         // Clear any stale custom name that may have been copied from a previous stored item.
         strapStack.remove(DataComponents.CUSTOM_NAME);
 
