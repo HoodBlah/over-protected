@@ -249,10 +249,16 @@ public class StrapInventory implements Container {
         for (int i = 0; i < size; i++) {
             ItemStack stored = items.get(i);
             if (stored.isEmpty() || !stored.isDamageableItem()) continue;
-            stored.hurtAndBreak(amount, entity, strapSlot);
-            if (stored.isEmpty()) {
+            // Apply durability damage directly — do NOT call hurtAndBreak(amount, entity, strapSlot).
+            // That method calls entity.onEquippedItemBroken(item, strapSlot) when a stored piece
+            // breaks, which then calls entity.setItemSlot(strapSlot, EMPTY) and physically removes
+            // the STRAP from the armor slot, causing all armor values to reset to zero.
+            int newDamage = stored.getDamageValue() + amount;
+            if (newDamage >= stored.getMaxDamage()) {
                 items.set(i, ItemStack.EMPTY);
                 anyBroke = true;
+            } else {
+                stored.setDamageValue(newDamage);
             }
         }
         if (anyBroke) {
