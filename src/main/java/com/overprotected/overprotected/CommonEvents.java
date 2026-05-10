@@ -56,6 +56,13 @@ public class CommonEvents {
         String slotName = strapItem.getArmorType().getName();
         EquipmentSlotGroup slotGroup = EquipmentSlotGroup.bySlot(strapItem.getArmorType().getSlot());
 
+        // Clear any stale modifiers that may remain in the ATTRIBUTE_MODIFIERS component from
+        // older versions of this mod (which wrote directly to the component). Without this,
+        // the stale component value + our newly injected value would stack, doubling the stats.
+        event.removeAllModifiersFor(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
+        event.removeAllModifiersFor(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR_TOUGHNESS);
+        event.removeAllModifiersFor(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
+
         if (bonusArmor != 0)
             event.addModifier(
                 net.minecraft.world.entity.ai.attributes.Attributes.ARMOR,

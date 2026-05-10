@@ -178,8 +178,9 @@ public class StrapInventory implements Container {
         // NOTE: ATTRIBUTE_MODIFIERS are no longer written to the stack here.
         // They are injected dynamically via ItemAttributeModifierEvent in CommonEvents,
         // reading BonusArmor/BonusToughness/BonusKnockback from CUSTOM_DATA above.
-        // This prevents NeoForge's equipment-change detection from wiping them when
-        // CUSTOM_DATA is mutated on durability damage.
+        // Explicitly clear the component so that any stale values persisted by older
+        // versions of this mod do not accumulate with the event-injected values.
+        strapStack.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
     }
 
     /**
