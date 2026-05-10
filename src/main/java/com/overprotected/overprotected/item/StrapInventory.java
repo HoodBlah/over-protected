@@ -13,20 +13,14 @@ import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ArmorItem;
-import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.EquipmentSlotGroup;
-import net.minecraft.world.entity.ai.attributes.Attribute;import net.minecraft.world.entity.ai.attributes.AttributeModifier;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.neoforged.neoforge.event.ItemAttributeModifierEvent;
 
@@ -106,16 +100,6 @@ public class StrapInventory implements Container {
         double bonusArmor = 0, bonusToughness = 0, bonusKnockback = 0;
         Map<Holder<Enchantment>, Integer> enchMap = new HashMap<>();
 
-        // Track extra attrs by Attribute object identity + operation (captures inline holders
-        // and avoids string-key issues). Separate map keeps the Holder reference for building.
-        Map<Attribute, Map<AttributeModifier.Operation, Double>> extraAmounts = new IdentityHashMap<>();
-        Map<Attribute, Holder<Attribute>> extraHolders = new IdentityHashMap<>();
-
-        // Singleton references for fast identity-based exclusion of standard armor attrs.
-        Attribute armorAttr    = Attributes.ARMOR.value();
-        Attribute toughnessAttr = Attributes.ARMOR_TOUGHNESS.value();
-        Attribute knockbackAttr = Attributes.KNOCKBACK_RESISTANCE.value();
-
         // Track first armor item's registry key for client-side render proxy.
         String firstArmorKey = "";
 
@@ -128,16 +112,7 @@ public class StrapInventory implements Container {
             list.add(stored.save(registries, entry));
 
             if (stored.getItem() instanceof ArmorItem armorItem) {
-                ArmorMaterial mat = armorItem.getMaterial().value();
-                double defense   = mat.defense().getOrDefault(armorItem.getType(), 0);
-                double toughness = mat.toughness();
-                double knockback = mat.knockbackResistance();
-                bonusArmor     += defense;
-                bonusToughness += toughness;
-                bonusKnockback += knockback;
-
                 if (firstArmorKey.isEmpty()) {
-                    // Safe to call registryAccess().lookup() on server; on client BuiltInRegistries works too.
                     firstArmorKey = net.minecraft.core.registries.BuiltInRegistries.ITEM
                             .getResourceKey(stored.getItem())
                             .map(k -> k.location().toString())
@@ -146,20 +121,22 @@ public class StrapInventory implements Container {
 
                 // Fire ItemAttributeModifierEvent for the stored item so that mods like
                 // Apotheosis (which inject stats via the event, not the component) contribute.
-                // Constructor takes (ItemStack, existing ItemAttributeModifiers from the stack).
+                // The event starts with the item's existing ATTRIBUTE_MODIFIERS (which already
+                // includes the base ArmorMaterial values for vanilla items), so we read the
+                // final combined result directly without also adding ArmorMaterial separately.
                 ItemAttributeModifiers existingMods = stored.getOrDefault(
                         DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
                 ItemAttributeModifierEvent innerEvent = new ItemAttributeModifierEvent(stored, existingMods);
                 net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(innerEvent);
 
                 for (ItemAttributeModifiers.Entry ae : innerEvent.getModifiers()) {
-                    Attribute av = ae.attribute().value();
-                    // Skip standard armor attrs — handled via ArmorMaterial above.
-                    if (av == armorAttr || av == toughnessAttr || av == knockbackAttr) continue;
-                    extraAmounts
-                            .computeIfAbsent(av, k -> new HashMap<>())
-                            .merge(ae.modifier().operation(), ae.modifier().amount(), Double::sum);
-                    extraHolders.putIfAbsent(av, ae.attribute());
+                    var attrValue = ae.attribute().value();
+                    if (attrValue == net.minecraft.world.entity.ai.attributes.Attributes.ARMOR.value())
+                        bonusArmor += ae.modifier().amount();
+                    else if (attrValue == net.minecraft.world.entity.ai.attributes.Attributes.ARMOR_TOUGHNESS.value())
+                        bonusToughness += ae.modifier().amount();
+                    else if (attrValue == net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE.value())
+                        bonusKnockback += ae.modifier().amount();
                 }
             }
 
@@ -198,47 +175,11 @@ public class StrapInventory implements Container {
             strapStack.set(DataComponents.ENCHANTMENTS, mutable.toImmutable());
         }
 
-        // Build ATTRIBUTE_MODIFIERS component — everything except Apotheosis event-injected
-        // stats, which are re-added dynamically in CommonEvents.onItemAttributes().
-        // IMPORTANT: modifier IDs must include the slot name so that head/chest/legs/feet
-        // straps each have a unique ID. Without this, reapplying one slot's modifiers
-        // calls removeModifier() with the shared ID and wipes the other slots' contributions.
-        StrapItem strapItem = (StrapItem) strapStack.getItem();
-        String slotName = strapItem.getArmorType().getName(); // "helmet","chestplate","leggings","boots"
-        EquipmentSlotGroup slotGroup = EquipmentSlotGroup.bySlot(strapItem.getArmorType().getSlot());
-        ItemAttributeModifiers.Builder modBuilder = ItemAttributeModifiers.builder();
-        if (bonusArmor != 0)
-            modBuilder.add(Attributes.ARMOR, new AttributeModifier(
-                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_armor_" + slotName),
-                    bonusArmor, AttributeModifier.Operation.ADD_VALUE), slotGroup);
-        if (bonusToughness != 0)
-            modBuilder.add(Attributes.ARMOR_TOUGHNESS, new AttributeModifier(
-                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_toughness_" + slotName),
-                    bonusToughness, AttributeModifier.Operation.ADD_VALUE), slotGroup);
-        if (bonusKnockback != 0)
-            modBuilder.add(Attributes.KNOCKBACK_RESISTANCE, new AttributeModifier(
-                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_knockback_" + slotName),
-                    bonusKnockback, AttributeModifier.Operation.ADD_VALUE), slotGroup);
-
-        int extraCount = 0;
-        for (var attrEntry : extraAmounts.entrySet()) {
-            Attribute av = attrEntry.getKey();
-            Holder<Attribute> holder = extraHolders.get(av);
-            for (var opEntry : attrEntry.getValue().entrySet()) {
-                if (opEntry.getValue() == 0) continue;
-                String attrPath = holder.unwrapKey()
-                        .map(k -> k.location().toString()
-                                .replace(":", "_").replace("/", "_").replace(".", "_"))
-                        .orElseGet(() -> "inline_" + Integer.toHexString(System.identityHashCode(av)));
-                ResourceLocation modId = ResourceLocation.fromNamespaceAndPath("overprotected",
-                        "strap_" + slotName + "_" + attrPath + "_" + opEntry.getKey().ordinal());
-                modBuilder.add(holder, new AttributeModifier(modId, opEntry.getValue(),
-                        opEntry.getKey()), slotGroup);
-                extraCount++;
-            }
-        }
-
-        strapStack.set(DataComponents.ATTRIBUTE_MODIFIERS, modBuilder.build());
+        // NOTE: ATTRIBUTE_MODIFIERS are no longer written to the stack here.
+        // They are injected dynamically via ItemAttributeModifierEvent in CommonEvents,
+        // reading BonusArmor/BonusToughness/BonusKnockback from CUSTOM_DATA above.
+        // This prevents NeoForge's equipment-change detection from wiping them when
+        // CUSTOM_DATA is mutated on durability damage.
     }
 
     /**

@@ -4,16 +4,11 @@ import com.overprotected.overprotected.init.ModMenuTypes;
 import com.overprotected.overprotected.item.StrapInventory;
 import com.overprotected.overprotected.item.StrapItem;
 import com.overprotected.overprotected.item.StrapTier;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.ai.attributes.AttributeInstance;
-import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemAttributeModifiers;
 
 /**
  * Menu (container) for a Strap item.
@@ -26,8 +21,6 @@ public class StrapMenu extends AbstractContainerMenu {
     private final boolean isTwoRows;
     /** Index of the strap in the player inventory so we can find it. */
     private final int strapInvSlot;
-    /** ATTRIBUTE_MODIFIERS when the menu was opened — used to cleanly remove live modifiers in removed(). */
-    private final ItemAttributeModifiers modsAtOpen;
 
     // Slot layout constants
     private static final int STRAP_ROW_X = 8;
@@ -46,9 +39,6 @@ public class StrapMenu extends AbstractContainerMenu {
                 playerInv.player.level().registryAccess();
         this.strapInventory = new StrapInventory(strapStack, strapSlots, registries);
         this.isTwoRows = strapSlots > 8;
-        // Snapshot component state at open time — this is what the game applied to the live
-        // AttributeMap at equip, so removed() can remove exactly those before adding new values.
-        this.modsAtOpen = strapStack.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
 
         // Determine which armor type is accepted
         net.minecraft.world.item.ArmorItem.Type acceptedType = strapItem.getArmorType();
@@ -140,35 +130,15 @@ public class StrapMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Called when the container is closed. Flushes inventory to the stack then
-     * updates the player's live AttributeMap so new stats take effect immediately.
+     * Called when the container is closed. Flushes the inventory state back into the
+     * strap's CUSTOM_DATA. The ItemAttributeModifierEvent hook in CommonEvents will
+     * automatically pick up the new values whenever Minecraft next queries the strap's
+     * attributes — no manual AttributeMap manipulation needed.
      */
     @Override
     public void removed(Player player) {
         super.removed(player);
         if (player.level().isClientSide()) return;
-
         strapInventory.writeToStack();
-
-        ItemStack strapStack = strapInventory.getStrapStack();
-        if (strapStack.isEmpty() || !(strapStack.getItem() instanceof StrapItem strapItem)) return;
-        EquipmentSlot equipSlot = strapItem.getArmorType().getSlot();
-
-        if (player.getItemBySlot(equipSlot) != strapStack) {
-            return;
-        }
-
-        ItemAttributeModifiers newMods = strapStack.getOrDefault(
-                DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
-        for (ItemAttributeModifiers.Entry entry : modsAtOpen.modifiers()) {
-            AttributeInstance inst = player.getAttribute(entry.attribute());
-            if (inst != null) inst.removeModifier(entry.modifier().id());
-        }
-        for (ItemAttributeModifiers.Entry entry : newMods.modifiers()) {
-            AttributeInstance inst = player.getAttribute(entry.attribute());
-            if (inst == null) continue;
-            inst.removeModifier(entry.modifier().id()); // safety: avoid duplicates
-            if (entry.modifier().amount() != 0) inst.addTransientModifier(entry.modifier());
-        }
     }
 }

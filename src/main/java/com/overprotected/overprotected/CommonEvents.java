@@ -4,45 +4,94 @@ import com.overprotected.overprotected.item.StrapInventory;
 import com.overprotected.overprotected.item.StrapItem;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.ItemAttributeModifierEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.Optional;
 
 @EventBusSubscriber(modid = OverProtected.MODID)
 public class CommonEvents {
 
-    private static final Logger LOGGER = LogManager.getLogger("overprotected");
-
     private static final EquipmentSlot[] ARMOR_SLOTS = {
         EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
     };
 
     /**
-     * Whenever a living entity takes physical damage, apply the same
-     * per-hit durability damage to every armor piece stored inside any
-     * equipped strap — mirroring vanilla's hurtArmor formula (max(1, dmg/4)).
+     * Injects armor/toughness/knockback modifiers dynamically at the moment Minecraft
+     * queries an equipped strap's attributes (before damage calculation). Reading from
+     * CUSTOM_DATA rather than ATTRIBUTE_MODIFIERS means NeoForge's equipment-change
+     * detection — which fires when CUSTOM_DATA is mutated on hit — cannot wipe our values.
+     */
+    @SubscribeEvent
+    public static void onItemAttributeModifier(ItemAttributeModifierEvent event) {
+        ItemStack stack = event.getItemStack();
+        if (!(stack.getItem() instanceof StrapItem strapItem)) return;
+
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+        if (customData == null) return;
+        var tag = customData.copyTag();
+
+        double bonusArmor     = tag.getDouble(StrapInventory.BONUS_ARMOR_KEY);
+        double bonusToughness = tag.getDouble(StrapInventory.BONUS_TOUGHNESS_KEY);
+        double bonusKnockback = tag.getDouble(StrapInventory.BONUS_KNOCKBACK_KEY);
+
+        if (bonusArmor == 0 && bonusToughness == 0 && bonusKnockback == 0) return;
+
+        String slotName = strapItem.getArmorType().getName();
+        EquipmentSlotGroup slotGroup = EquipmentSlotGroup.bySlot(strapItem.getArmorType().getSlot());
+
+        if (bonusArmor != 0)
+            event.addModifier(
+                net.minecraft.world.entity.ai.attributes.Attributes.ARMOR,
+                new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_armor_" + slotName),
+                    bonusArmor,
+                    net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE),
+                slotGroup);
+
+        if (bonusToughness != 0)
+            event.addModifier(
+                net.minecraft.world.entity.ai.attributes.Attributes.ARMOR_TOUGHNESS,
+                new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_toughness_" + slotName),
+                    bonusToughness,
+                    net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE),
+                slotGroup);
+
+        if (bonusKnockback != 0)
+            event.addModifier(
+                net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE,
+                new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_knockback_" + slotName),
+                    bonusKnockback,
+                    net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE),
+                slotGroup);
+    }
+
+    /**
+     * Whenever a living entity takes physical damage, apply the same per-hit
+     * durability damage to every armor piece stored inside any equipped strap.
      */
     @SubscribeEvent
     public static void onLivingDamage(LivingDamageEvent.Post event) {
         LivingEntity entity = event.getEntity();
         if (entity.level().isClientSide()) return;
-        // Damage sources that bypass armor don't damage armor items either.
         if (event.getSource().is(DamageTypeTags.BYPASSES_ARMOR)) return;
         float rawDamage = event.getOriginalDamage();
         if (rawDamage <= 0) return;
@@ -51,78 +100,16 @@ public class CommonEvents {
         for (EquipmentSlot slot : ARMOR_SLOTS) {
             ItemStack equipped = entity.getItemBySlot(slot);
             if (!(equipped.getItem() instanceof StrapItem strapItem)) continue;
-
-            // Log armor attribute BEFORE damage is applied
-            net.minecraft.world.entity.ai.attributes.AttributeInstance armorBefore =
-                    entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
-            LOGGER.info("[OP-DEBUG] HIT slot={} entity={} rawDmg={} armorDmg={} | armorValue BEFORE={}",
-                    slot.getName(), entity.getName().getString(), rawDamage, armorDamage,
-                    armorBefore != null ? armorBefore.getValue() : "null");
-
-            // Log ATTRIBUTE_MODIFIERS on strapStack before
-            ItemAttributeModifiers modsBefore = equipped.getOrDefault(
-                    net.minecraft.core.component.DataComponents.ATTRIBUTE_MODIFIERS,
-                    ItemAttributeModifiers.EMPTY);
-            LOGGER.info("[OP-DEBUG]   modifiers on stack BEFORE ({} entries):", modsBefore.modifiers().size());
-            for (ItemAttributeModifiers.Entry e : modsBefore.modifiers()) {
-                LOGGER.info("[OP-DEBUG]     attr={} amount={} op={}",
-                        e.attribute().unwrapKey().map(k -> k.location().toString()).orElse("?"),
-                        e.modifier().amount(), e.modifier().operation());
-            }
-
             StrapInventory inv = new StrapInventory(
                     equipped, strapItem.getStrapTier().getSlots(),
                     entity.level().registryAccess());
             inv.applyArmorDamage(armorDamage, entity, slot);
-
-            // Log ATTRIBUTE_MODIFIERS on strapStack after save
-            ItemAttributeModifiers modsAfter = equipped.getOrDefault(
-                    net.minecraft.core.component.DataComponents.ATTRIBUTE_MODIFIERS,
-                    ItemAttributeModifiers.EMPTY);
-            LOGGER.info("[OP-DEBUG]   modifiers on stack AFTER save ({} entries):", modsAfter.modifiers().size());
-            for (ItemAttributeModifiers.Entry e : modsAfter.modifiers()) {
-                LOGGER.info("[OP-DEBUG]     attr={} amount={} op={}",
-                        e.attribute().unwrapKey().map(k -> k.location().toString()).orElse("?"),
-                        e.modifier().amount(), e.modifier().operation());
-            }
-
-            reapplyModifiers(equipped, slot, entity);
-
-            // Log armor attribute AFTER reapply
-            net.minecraft.world.entity.ai.attributes.AttributeInstance armorAfter =
-                    entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
-            LOGGER.info("[OP-DEBUG]   armorValue AFTER reapply={}",
-                    armorAfter != null ? armorAfter.getValue() : "null");
         }
     }
 
     /**
-     * Force-reapplies the ATTRIBUTE_MODIFIERS from the given strapStack to the
-     * entity's live AttributeMap. Called after any write to CUSTOM_DATA so that
-     * NeoForge's equipment-change detection cannot accidentally remove them.
-     */
-    private static void reapplyModifiers(ItemStack strapStack, EquipmentSlot slot, LivingEntity entity) {
-        ItemAttributeModifiers mods = strapStack.getOrDefault(
-                net.minecraft.core.component.DataComponents.ATTRIBUTE_MODIFIERS,
-                ItemAttributeModifiers.EMPTY);
-        mods.forEach(slot, (attrHolder, modifier) -> {
-            AttributeInstance inst = entity.getAttribute(attrHolder);
-            String attrName = attrHolder.unwrapKey().map(k -> k.location().toString()).orElse("?");
-            if (inst == null) {
-                LOGGER.warn("[OP-DEBUG]   reapply: AttributeInstance is NULL for attr={}", attrName);
-                return;
-            }
-            inst.removeModifier(modifier.id());
-            if (modifier.amount() != 0) inst.addTransientModifier(modifier);
-            LOGGER.info("[OP-DEBUG]   reapply: attr={} amount={} -> instValue={}",
-                    attrName, modifier.amount(), inst.getValue());
-        });
-    }
-
-    /**
-     * When a player picks up an XP orb, repair the leftmost damaged stored
-     * item that has Mending, consuming XP from the orb. Only one item per orb
-     * is repaired (vanilla mending handles the rest with remaining orb value).
+     * When a player picks up an XP orb, repair the leftmost damaged stored item
+     * that has Mending, consuming XP from the orb.
      */
     @SubscribeEvent
     public static void onXpPickup(PlayerXpEvent.PickupXp event) {
@@ -149,14 +136,12 @@ public class CommonEvents {
                 if (stored.isEmpty() || !stored.isDamageableItem() || stored.getDamageValue() == 0) continue;
                 if (EnchantmentHelper.getItemEnchantmentLevel(mendingHolder, stored) == 0) continue;
 
-                // Vanilla mending formula: 2 durability repaired per 1 XP consumed.
                 int repairAmount = Math.min(orb.value * 2, stored.getDamageValue());
                 int xpUsed = (repairAmount + 1) / 2;
                 stored.setDamageValue(stored.getDamageValue() - repairAmount);
                 orb.value -= xpUsed;
                 inv.saveItemsOnly();
-                reapplyModifiers(equipped, slot, player);
-                return; // only one stored item per orb pickup
+                return;
             }
         }
     }
