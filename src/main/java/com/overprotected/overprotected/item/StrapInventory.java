@@ -12,8 +12,8 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ArmorItem;
-import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -112,16 +112,23 @@ public class StrapInventory implements Container {
             list.add(stored.save(registries, entry));
 
             if (stored.getItem() instanceof ArmorItem armorItem) {
-                ArmorMaterial mat = armorItem.getMaterial().value();
-                bonusArmor     += mat.defense().getOrDefault(armorItem.getType(), 0);
-                bonusToughness += mat.toughness();
-                bonusKnockback += mat.knockbackResistance();
-
                 if (firstArmorKey.isEmpty()) {
                     firstArmorKey = net.minecraft.core.registries.BuiltInRegistries.ITEM
                             .getResourceKey(stored.getItem())
                             .map(k -> k.location().toString())
                             .orElse("");
+                }
+
+                // getAttributeModifiers() fires ItemAttributeModifierEvent on the stored item,
+                // returning base ArmorMaterial stats + any event-injected bonuses (e.g. Apotheosis
+                // gems/affixes). Filter to the item's own slot so only applicable modifiers count.
+                EquipmentSlot itemSlot = armorItem.getType().getSlot();
+                for (var ae : stored.getAttributeModifiers().modifiers()) {
+                    if (!ae.slot().test(itemSlot)) continue;
+                    var av = ae.attribute().value();
+                    if (av == Attributes.ARMOR.value())               bonusArmor     += ae.modifier().amount();
+                    else if (av == Attributes.ARMOR_TOUGHNESS.value())     bonusToughness += ae.modifier().amount();
+                    else if (av == Attributes.KNOCKBACK_RESISTANCE.value()) bonusKnockback += ae.modifier().amount();
                 }
             }
 
