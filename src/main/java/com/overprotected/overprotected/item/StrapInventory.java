@@ -15,6 +15,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ItemStack;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -30,6 +32,8 @@ import net.minecraft.world.item.component.ItemAttributeModifiers;
  * to the strap whenever its contents change.
  */
 public class StrapInventory implements Container {
+
+    private static final Logger LOGGER = LogManager.getLogger("overprotected");
 
     /** Components never copied from stored pieces onto the strap. */
     @SuppressWarnings("rawtypes")
@@ -53,8 +57,11 @@ public class StrapInventory implements Container {
 
     public static final String NBT_KEY          = "StrapItems";
     public static final String BONUS_ARMOR_KEY     = "BonusArmor";
-    public static final String BONUS_TOUGHNESS_KEY = "BonusToughness";
-    public static final String BONUS_KNOCKBACK_KEY = "BonusKnockback";
+    public static final String BONUS_TOUGHNESS_KEY  = "BonusToughness";
+    public static final String BONUS_KNOCKBACK_KEY  = "BonusKnockback";
+    /** NBT list of {Attr, Op, Amount} for every attribute modifier accumulated from stored items.
+     *  Supersedes BonusArmor/BonusToughness/BonusKnockback — injected via ItemAttributeModifierEvent. */
+    public static final String BONUS_MODIFIERS_KEY  = "BonusModifiers";
 
     private final ItemStack strapStack;
     private final NonNullList<ItemStack> items;
@@ -98,6 +105,9 @@ public class StrapInventory implements Container {
 
         ListTag list = new ListTag();
         double bonusArmor = 0, bonusToughness = 0, bonusKnockback = 0;
+        // General accumulator for ALL attribute types (captures non-standard gem stats).
+        // Key: attribute registry name -> (operation ordinal -> summed amount)
+        Map<String, Map<Integer, Double>> attrAccum = new java.util.LinkedHashMap<>();
         Map<Holder<Enchantment>, Integer> enchMap = new HashMap<>();
 
         // Track first armor item's registry key for client-side render proxy.
@@ -119,17 +129,33 @@ public class StrapInventory implements Container {
                             .orElse("");
                 }
 
-                // getAttributeModifiers() fires ItemAttributeModifierEvent on the stored item,
-                // returning base ArmorMaterial stats + any event-injected bonuses (e.g. Apotheosis
-                // gems/affixes). Filter to the item's own slot so only applicable modifiers count.
                 EquipmentSlot itemSlot = armorItem.getType().getSlot();
-                for (var ae : stored.getAttributeModifiers().modifiers()) {
+                var allMods = stored.getAttributeModifiers();
+                LOGGER.info("[OP-DEBUG] writeToStack slot={} item={} totalModifiers={}",
+                        itemSlot.getName(),
+                        net.minecraft.core.registries.BuiltInRegistries.ITEM
+                                .getKey(stored.getItem()),
+                        allMods.modifiers().size());
+                for (var ae : allMods.modifiers()) {
+                    String attrName = ae.attribute().unwrapKey()
+                            .map(k -> k.location().toString()).orElse("?");
+                    LOGGER.info("[OP-DEBUG]   mod: attr={} amount={} slot={} passesFilter={}",
+                            attrName, ae.modifier().amount(), ae.slot(), ae.slot().test(itemSlot));
                     if (!ae.slot().test(itemSlot)) continue;
                     var av = ae.attribute().value();
-                    if (av == Attributes.ARMOR.value())               bonusArmor     += ae.modifier().amount();
-                    else if (av == Attributes.ARMOR_TOUGHNESS.value())     bonusToughness += ae.modifier().amount();
-                    else if (av == Attributes.KNOCKBACK_RESISTANCE.value()) bonusKnockback += ae.modifier().amount();
+                    if (av == Attributes.ARMOR.value())                bonusArmor     += ae.modifier().amount();
+                    else if (av == Attributes.ARMOR_TOUGHNESS.value())      bonusToughness += ae.modifier().amount();
+                    else if (av == Attributes.KNOCKBACK_RESISTANCE.value())  bonusKnockback += ae.modifier().amount();
+                    // Accumulate into general map for ALL attr types (including standard ones)
+                    ae.attribute().unwrapKey().ifPresent(k -> {
+                        attrAccum.computeIfAbsent(k.location().toString(),
+                                        x -> new java.util.LinkedHashMap<>())
+                                .merge(ae.modifier().operation().ordinal(),
+                                        ae.modifier().amount(), Double::sum);
+                    });
                 }
+                LOGGER.info("[OP-DEBUG]   running totals after {}: armor={} tough={} kb={} extraAttrTypes={}",
+                        itemSlot.getName(), bonusArmor, bonusToughness, bonusKnockback, attrAccum.size());
             }
 
             // Collect enchantments.
@@ -150,10 +176,25 @@ public class StrapInventory implements Container {
             }
         }
 
+        LOGGER.info("[OP-DEBUG] writeToStack FINAL: armor={} tough={} kb={} allAttrTypes={}",
+                bonusArmor, bonusToughness, bonusKnockback, attrAccum.keySet());
         rootTag.put(NBT_KEY, list);
         rootTag.putDouble(BONUS_ARMOR_KEY,     bonusArmor);
         rootTag.putDouble(BONUS_TOUGHNESS_KEY, bonusToughness);
         rootTag.putDouble(BONUS_KNOCKBACK_KEY, bonusKnockback);
+        // Store full modifier list (includes all gem attribute types)
+        net.minecraft.nbt.ListTag bonusModsTag = new net.minecraft.nbt.ListTag();
+        for (var attrEntry : attrAccum.entrySet()) {
+            for (var opEntry : attrEntry.getValue().entrySet()) {
+                if (opEntry.getValue() == 0) continue;
+                CompoundTag mod = new CompoundTag();
+                mod.putString("Attr", attrEntry.getKey());
+                mod.putInt("Op", opEntry.getKey());
+                mod.putDouble("Amount", opEntry.getValue());
+                bonusModsTag.add(mod);
+            }
+        }
+        rootTag.put(BONUS_MODIFIERS_KEY, bonusModsTag);
         if (!firstArmorKey.isEmpty()) rootTag.putString("FirstArmorKey", firstArmorKey);
         else rootTag.remove("FirstArmorKey");
         strapStack.set(DataComponents.CUSTOM_DATA, CustomData.of(rootTag));

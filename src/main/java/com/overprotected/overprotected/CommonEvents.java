@@ -4,13 +4,16 @@ import com.overprotected.overprotected.item.StrapInventory;
 import com.overprotected.overprotected.item.StrapItem;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
@@ -22,21 +25,27 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.ItemAttributeModifierEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 @EventBusSubscriber(modid = OverProtected.MODID)
 public class CommonEvents {
+
+    private static final Logger LOGGER = LogManager.getLogger("overprotected");
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {
         EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
     };
 
     /**
-     * Injects armor/toughness/knockback modifiers dynamically at the moment Minecraft
-     * queries an equipped strap's attributes (before damage calculation). Reading from
-     * CUSTOM_DATA rather than ATTRIBUTE_MODIFIERS means NeoForge's equipment-change
-     * detection — which fires when CUSTOM_DATA is mutated on hit — cannot wipe our values.
+     * Injects attribute modifiers from CUSTOM_DATA into the strap's attribute set.
+     * Uses the BonusModifiers list (new format) which captures ALL attribute types
+     * including non-armor Apotheosis gem stats (max health, dodge, etc.).
+     * Falls back to BonusArmor/Toughness/Knockback keys for old saves.
      */
     @SubscribeEvent
     public static void onItemAttributeModifier(ItemAttributeModifierEvent event) {
@@ -47,18 +56,53 @@ public class CommonEvents {
         if (customData == null) return;
         var tag = customData.copyTag();
 
-        double bonusArmor     = tag.getDouble(StrapInventory.BONUS_ARMOR_KEY);
-        double bonusToughness = tag.getDouble(StrapInventory.BONUS_TOUGHNESS_KEY);
-        double bonusKnockback = tag.getDouble(StrapInventory.BONUS_KNOCKBACK_KEY);
-
-        if (bonusArmor == 0 && bonusToughness == 0 && bonusKnockback == 0) return;
-
         String slotName = strapItem.getArmorType().getName();
         EquipmentSlotGroup slotGroup = EquipmentSlotGroup.bySlot(strapItem.getArmorType().getSlot());
 
-        // Clear any stale modifiers that may remain in the ATTRIBUTE_MODIFIERS component from
-        // older versions of this mod (which wrote directly to the component). Without this,
-        // the stale component value + our newly injected value would stack, doubling the stats.
+        // New format: BonusModifiers list — covers ALL gem attribute types.
+        if (tag.contains(StrapInventory.BONUS_MODIFIERS_KEY, Tag.TAG_LIST)) {
+            var modsList = tag.getList(StrapInventory.BONUS_MODIFIERS_KEY, Tag.TAG_COMPOUND);
+            if (!modsList.isEmpty()) {
+                Set<Holder<Attribute>> cleared = new HashSet<>();
+                for (int i = 0; i < modsList.size(); i++) {
+                    var modTag = modsList.getCompound(i);
+                    String attrKey = modTag.getString("Attr");
+                    int opOrdinal  = modTag.getInt("Op");
+                    double amount  = modTag.getDouble("Amount");
+                    if (amount == 0) continue;
+                    var attrOpt = net.minecraft.core.registries.BuiltInRegistries.ATTRIBUTE
+                            .getHolder(ResourceLocation.parse(attrKey));
+                    if (attrOpt.isEmpty()) {
+                        LOGGER.warn("[OP-DEBUG] onItemAttributeModifier: unknown attribute {}", attrKey);
+                        continue;
+                    }
+                    Holder<Attribute> attrHolder = attrOpt.get();
+                    if (cleared.add(attrHolder)) event.removeAllModifiersFor(attrHolder);
+                    AttributeModifier.Operation op = AttributeModifier.Operation.values()[opOrdinal];
+                    String suffix = attrKey.replace(":", "_").replace("/", "_").replace(".", "_");
+                    event.addModifier(attrHolder,
+                            new AttributeModifier(
+                                    ResourceLocation.fromNamespaceAndPath("overprotected",
+                                            "strap_" + slotName + "_" + suffix + "_" + opOrdinal),
+                                    amount, op),
+                            slotGroup);
+                    LOGGER.info("[OP-DEBUG] inject: attr={} amount={} op={}", attrKey, amount, op);
+                }
+                return;
+            }
+        }
+
+        // Backward compat: old saves with only BonusArmor/Toughness/Knockback keys.
+        double bonusArmor     = tag.getDouble(StrapInventory.BONUS_ARMOR_KEY);
+        double bonusToughness = tag.getDouble(StrapInventory.BONUS_TOUGHNESS_KEY);
+        double bonusKnockback = tag.getDouble(StrapInventory.BONUS_KNOCKBACK_KEY);
+        LOGGER.info("[OP-DEBUG] onItemAttributeModifier (legacy): slot={} item={} armor={} tough={} kb={}",
+                stack.getItem().builtInRegistryHolder().key().location(),
+                strapItem.getArmorType().getName(),
+                bonusArmor, bonusToughness, bonusKnockback);
+
+        if (bonusArmor == 0 && bonusToughness == 0 && bonusKnockback == 0) return;
+
         event.removeAllModifiersFor(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
         event.removeAllModifiersFor(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR_TOUGHNESS);
         event.removeAllModifiersFor(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
@@ -66,28 +110,23 @@ public class CommonEvents {
         if (bonusArmor != 0)
             event.addModifier(
                 net.minecraft.world.entity.ai.attributes.Attributes.ARMOR,
-                new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                new AttributeModifier(
                     ResourceLocation.fromNamespaceAndPath("overprotected", "strap_armor_" + slotName),
-                    bonusArmor,
-                    net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE),
+                    bonusArmor, AttributeModifier.Operation.ADD_VALUE),
                 slotGroup);
-
         if (bonusToughness != 0)
             event.addModifier(
                 net.minecraft.world.entity.ai.attributes.Attributes.ARMOR_TOUGHNESS,
-                new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                new AttributeModifier(
                     ResourceLocation.fromNamespaceAndPath("overprotected", "strap_toughness_" + slotName),
-                    bonusToughness,
-                    net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE),
+                    bonusToughness, AttributeModifier.Operation.ADD_VALUE),
                 slotGroup);
-
         if (bonusKnockback != 0)
             event.addModifier(
                 net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE,
-                new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                new AttributeModifier(
                     ResourceLocation.fromNamespaceAndPath("overprotected", "strap_knockback_" + slotName),
-                    bonusKnockback,
-                    net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE),
+                    bonusKnockback, AttributeModifier.Operation.ADD_VALUE),
                 slotGroup);
     }
 
