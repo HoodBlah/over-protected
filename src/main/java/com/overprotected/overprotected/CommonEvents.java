@@ -35,8 +35,6 @@ import java.util.Set;
 @EventBusSubscriber(modid = OverProtected.MODID)
 public class CommonEvents {
 
-    private static final Logger LOGGER = LogManager.getLogger("overprotected");
-
     private static final EquipmentSlot[] ARMOR_SLOTS = {
         EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
     };
@@ -72,10 +70,7 @@ public class CommonEvents {
                     if (amount == 0) continue;
                     var attrOpt = net.minecraft.core.registries.BuiltInRegistries.ATTRIBUTE
                             .getHolder(ResourceLocation.parse(attrKey));
-                    if (attrOpt.isEmpty()) {
-                        LOGGER.warn("[OP-DEBUG] onItemAttributeModifier: unknown attribute {}", attrKey);
-                        continue;
-                    }
+                    if (attrOpt.isEmpty()) continue;
                     Holder<Attribute> attrHolder = attrOpt.get();
                     if (cleared.add(attrHolder)) event.removeAllModifiersFor(attrHolder);
                     AttributeModifier.Operation op = AttributeModifier.Operation.values()[opOrdinal];
@@ -86,7 +81,6 @@ public class CommonEvents {
                                             "strap_" + slotName + "_" + suffix + "_" + opOrdinal),
                                     amount, op),
                             slotGroup);
-                    LOGGER.info("[OP-DEBUG] inject: attr={} amount={} op={}", attrKey, amount, op);
                 }
                 return;
             }
@@ -96,10 +90,6 @@ public class CommonEvents {
         double bonusArmor     = tag.getDouble(StrapInventory.BONUS_ARMOR_KEY);
         double bonusToughness = tag.getDouble(StrapInventory.BONUS_TOUGHNESS_KEY);
         double bonusKnockback = tag.getDouble(StrapInventory.BONUS_KNOCKBACK_KEY);
-        LOGGER.info("[OP-DEBUG] onItemAttributeModifier (legacy): slot={} item={} armor={} tough={} kb={}",
-                stack.getItem().builtInRegistryHolder().key().location(),
-                strapItem.getArmorType().getName(),
-                bonusArmor, bonusToughness, bonusKnockback);
 
         if (bonusArmor == 0 && bonusToughness == 0 && bonusKnockback == 0) return;
 

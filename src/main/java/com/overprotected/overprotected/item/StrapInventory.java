@@ -15,8 +15,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ItemStack;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -32,8 +30,6 @@ import net.minecraft.world.item.component.ItemAttributeModifiers;
  * to the strap whenever its contents change.
  */
 public class StrapInventory implements Container {
-
-    private static final Logger LOGGER = LogManager.getLogger("overprotected");
 
     /** Components never copied from stored pieces onto the strap. */
     @SuppressWarnings("rawtypes")
@@ -131,16 +127,7 @@ public class StrapInventory implements Container {
 
                 EquipmentSlot itemSlot = armorItem.getType().getSlot();
                 var allMods = stored.getAttributeModifiers();
-                LOGGER.info("[OP-DEBUG] writeToStack slot={} item={} totalModifiers={}",
-                        itemSlot.getName(),
-                        net.minecraft.core.registries.BuiltInRegistries.ITEM
-                                .getKey(stored.getItem()),
-                        allMods.modifiers().size());
                 for (var ae : allMods.modifiers()) {
-                    String attrName = ae.attribute().unwrapKey()
-                            .map(k -> k.location().toString()).orElse("?");
-                    LOGGER.info("[OP-DEBUG]   mod: attr={} amount={} slot={} passesFilter={}",
-                            attrName, ae.modifier().amount(), ae.slot(), ae.slot().test(itemSlot));
                     if (!ae.slot().test(itemSlot)) continue;
                     var av = ae.attribute().value();
                     if (av == Attributes.ARMOR.value())                bonusArmor     += ae.modifier().amount();
@@ -154,8 +141,6 @@ public class StrapInventory implements Container {
                                         ae.modifier().amount(), Double::sum);
                     });
                 }
-                LOGGER.info("[OP-DEBUG]   running totals after {}: armor={} tough={} kb={} extraAttrTypes={}",
-                        itemSlot.getName(), bonusArmor, bonusToughness, bonusKnockback, attrAccum.size());
             }
 
             // Collect enchantments.
@@ -176,8 +161,6 @@ public class StrapInventory implements Container {
             }
         }
 
-        LOGGER.info("[OP-DEBUG] writeToStack FINAL: armor={} tough={} kb={} allAttrTypes={}",
-                bonusArmor, bonusToughness, bonusKnockback, attrAccum.keySet());
         rootTag.put(NBT_KEY, list);
         rootTag.putDouble(BONUS_ARMOR_KEY,     bonusArmor);
         rootTag.putDouble(BONUS_TOUGHNESS_KEY, bonusToughness);
