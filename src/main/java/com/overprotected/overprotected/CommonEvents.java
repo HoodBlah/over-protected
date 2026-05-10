@@ -19,11 +19,15 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Optional;
 
 @EventBusSubscriber(modid = OverProtected.MODID)
 public class CommonEvents {
+
+    private static final Logger LOGGER = LogManager.getLogger("overprotected");
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {
         EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
@@ -47,14 +51,48 @@ public class CommonEvents {
         for (EquipmentSlot slot : ARMOR_SLOTS) {
             ItemStack equipped = entity.getItemBySlot(slot);
             if (!(equipped.getItem() instanceof StrapItem strapItem)) continue;
+
+            // Log armor attribute BEFORE damage is applied
+            net.minecraft.world.entity.ai.attributes.AttributeInstance armorBefore =
+                    entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
+            LOGGER.info("[OP-DEBUG] HIT slot={} entity={} rawDmg={} armorDmg={} | armorValue BEFORE={}",
+                    slot.getName(), entity.getName().getString(), rawDamage, armorDamage,
+                    armorBefore != null ? armorBefore.getValue() : "null");
+
+            // Log ATTRIBUTE_MODIFIERS on strapStack before
+            ItemAttributeModifiers modsBefore = equipped.getOrDefault(
+                    net.minecraft.core.component.DataComponents.ATTRIBUTE_MODIFIERS,
+                    ItemAttributeModifiers.EMPTY);
+            LOGGER.info("[OP-DEBUG]   modifiers on stack BEFORE ({} entries):", modsBefore.modifiers().size());
+            for (ItemAttributeModifiers.Entry e : modsBefore.modifiers()) {
+                LOGGER.info("[OP-DEBUG]     attr={} amount={} op={}",
+                        e.attribute().unwrapKey().map(k -> k.location().toString()).orElse("?"),
+                        e.modifier().amount(), e.modifier().operation());
+            }
+
             StrapInventory inv = new StrapInventory(
                     equipped, strapItem.getStrapTier().getSlots(),
                     entity.level().registryAccess());
             inv.applyArmorDamage(armorDamage, entity, slot);
-            // saveItemsOnly() modifies CUSTOM_DATA on the equipped stack, which NeoForge
-            // detects as an equipment change next tick and may fail to re-add our attribute
-            // modifiers correctly. Force-reapply them here so armor values never drop.
+
+            // Log ATTRIBUTE_MODIFIERS on strapStack after save
+            ItemAttributeModifiers modsAfter = equipped.getOrDefault(
+                    net.minecraft.core.component.DataComponents.ATTRIBUTE_MODIFIERS,
+                    ItemAttributeModifiers.EMPTY);
+            LOGGER.info("[OP-DEBUG]   modifiers on stack AFTER save ({} entries):", modsAfter.modifiers().size());
+            for (ItemAttributeModifiers.Entry e : modsAfter.modifiers()) {
+                LOGGER.info("[OP-DEBUG]     attr={} amount={} op={}",
+                        e.attribute().unwrapKey().map(k -> k.location().toString()).orElse("?"),
+                        e.modifier().amount(), e.modifier().operation());
+            }
+
             reapplyModifiers(equipped, slot, entity);
+
+            // Log armor attribute AFTER reapply
+            net.minecraft.world.entity.ai.attributes.AttributeInstance armorAfter =
+                    entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
+            LOGGER.info("[OP-DEBUG]   armorValue AFTER reapply={}",
+                    armorAfter != null ? armorAfter.getValue() : "null");
         }
     }
 
@@ -69,9 +107,15 @@ public class CommonEvents {
                 ItemAttributeModifiers.EMPTY);
         mods.forEach(slot, (attrHolder, modifier) -> {
             AttributeInstance inst = entity.getAttribute(attrHolder);
-            if (inst == null) return;
+            String attrName = attrHolder.unwrapKey().map(k -> k.location().toString()).orElse("?");
+            if (inst == null) {
+                LOGGER.warn("[OP-DEBUG]   reapply: AttributeInstance is NULL for attr={}", attrName);
+                return;
+            }
             inst.removeModifier(modifier.id());
             if (modifier.amount() != 0) inst.addTransientModifier(modifier);
+            LOGGER.info("[OP-DEBUG]   reapply: attr={} amount={} -> instValue={}",
+                    attrName, modifier.amount(), inst.getValue());
         });
     }
 
