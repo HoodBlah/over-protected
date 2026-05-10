@@ -200,20 +200,24 @@ public class StrapInventory implements Container {
 
         // Build ATTRIBUTE_MODIFIERS component — everything except Apotheosis event-injected
         // stats, which are re-added dynamically in CommonEvents.onItemAttributes().
-        EquipmentSlotGroup slotGroup = EquipmentSlotGroup.bySlot(
-                ((StrapItem) strapStack.getItem()).getArmorType().getSlot());
+        // IMPORTANT: modifier IDs must include the slot name so that head/chest/legs/feet
+        // straps each have a unique ID. Without this, reapplying one slot's modifiers
+        // calls removeModifier() with the shared ID and wipes the other slots' contributions.
+        StrapItem strapItem = (StrapItem) strapStack.getItem();
+        String slotName = strapItem.getArmorType().getName(); // "helmet","chestplate","leggings","boots"
+        EquipmentSlotGroup slotGroup = EquipmentSlotGroup.bySlot(strapItem.getArmorType().getSlot());
         ItemAttributeModifiers.Builder modBuilder = ItemAttributeModifiers.builder();
         if (bonusArmor != 0)
             modBuilder.add(Attributes.ARMOR, new AttributeModifier(
-                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_armor"),
+                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_armor_" + slotName),
                     bonusArmor, AttributeModifier.Operation.ADD_VALUE), slotGroup);
         if (bonusToughness != 0)
             modBuilder.add(Attributes.ARMOR_TOUGHNESS, new AttributeModifier(
-                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_toughness"),
+                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_toughness_" + slotName),
                     bonusToughness, AttributeModifier.Operation.ADD_VALUE), slotGroup);
         if (bonusKnockback != 0)
             modBuilder.add(Attributes.KNOCKBACK_RESISTANCE, new AttributeModifier(
-                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_knockback"),
+                    ResourceLocation.fromNamespaceAndPath("overprotected", "strap_knockback_" + slotName),
                     bonusKnockback, AttributeModifier.Operation.ADD_VALUE), slotGroup);
 
         int extraCount = 0;
@@ -227,7 +231,7 @@ public class StrapInventory implements Container {
                                 .replace(":", "_").replace("/", "_").replace(".", "_"))
                         .orElseGet(() -> "inline_" + Integer.toHexString(System.identityHashCode(av)));
                 ResourceLocation modId = ResourceLocation.fromNamespaceAndPath("overprotected",
-                        "strap_" + attrPath + "_" + opEntry.getKey().ordinal());
+                        "strap_" + slotName + "_" + attrPath + "_" + opEntry.getKey().ordinal());
                 modBuilder.add(holder, new AttributeModifier(modId, opEntry.getValue(),
                         opEntry.getKey()), slotGroup);
                 extraCount++;
