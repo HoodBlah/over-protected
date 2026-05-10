@@ -8,8 +8,10 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
@@ -49,7 +51,28 @@ public class CommonEvents {
                     equipped, strapItem.getStrapTier().getSlots(),
                     entity.level().registryAccess());
             inv.applyArmorDamage(armorDamage, entity, slot);
+            // saveItemsOnly() modifies CUSTOM_DATA on the equipped stack, which NeoForge
+            // detects as an equipment change next tick and may fail to re-add our attribute
+            // modifiers correctly. Force-reapply them here so armor values never drop.
+            reapplyModifiers(equipped, slot, entity);
         }
+    }
+
+    /**
+     * Force-reapplies the ATTRIBUTE_MODIFIERS from the given strapStack to the
+     * entity's live AttributeMap. Called after any write to CUSTOM_DATA so that
+     * NeoForge's equipment-change detection cannot accidentally remove them.
+     */
+    private static void reapplyModifiers(ItemStack strapStack, EquipmentSlot slot, LivingEntity entity) {
+        ItemAttributeModifiers mods = strapStack.getOrDefault(
+                net.minecraft.core.component.DataComponents.ATTRIBUTE_MODIFIERS,
+                ItemAttributeModifiers.EMPTY);
+        mods.forEach(slot, (attrHolder, modifier) -> {
+            AttributeInstance inst = entity.getAttribute(attrHolder);
+            if (inst == null) return;
+            inst.removeModifier(modifier.id());
+            if (modifier.amount() != 0) inst.addTransientModifier(modifier);
+        });
     }
 
     /**
@@ -88,6 +111,7 @@ public class CommonEvents {
                 stored.setDamageValue(stored.getDamageValue() - repairAmount);
                 orb.value -= xpUsed;
                 inv.saveItemsOnly();
+                reapplyModifiers(equipped, slot, player);
                 return; // only one stored item per orb pickup
             }
         }
