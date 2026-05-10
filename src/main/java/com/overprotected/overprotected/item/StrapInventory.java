@@ -13,6 +13,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ArmorItem;
+import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -22,7 +23,6 @@ import java.util.Map;
 import java.util.Set;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
-import net.neoforged.neoforge.event.ItemAttributeModifierEvent;
 
 /**
  * NBT-backed inventory stored inside the {@code minecraft:custom_data} component
@@ -112,31 +112,16 @@ public class StrapInventory implements Container {
             list.add(stored.save(registries, entry));
 
             if (stored.getItem() instanceof ArmorItem armorItem) {
+                ArmorMaterial mat = armorItem.getMaterial().value();
+                bonusArmor     += mat.defense().getOrDefault(armorItem.getType(), 0);
+                bonusToughness += mat.toughness();
+                bonusKnockback += mat.knockbackResistance();
+
                 if (firstArmorKey.isEmpty()) {
                     firstArmorKey = net.minecraft.core.registries.BuiltInRegistries.ITEM
                             .getResourceKey(stored.getItem())
                             .map(k -> k.location().toString())
                             .orElse("");
-                }
-
-                // Fire ItemAttributeModifierEvent for the stored item so that mods like
-                // Apotheosis (which inject stats via the event, not the component) contribute.
-                // The event starts with the item's existing ATTRIBUTE_MODIFIERS (which already
-                // includes the base ArmorMaterial values for vanilla items), so we read the
-                // final combined result directly without also adding ArmorMaterial separately.
-                ItemAttributeModifiers existingMods = stored.getOrDefault(
-                        DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
-                ItemAttributeModifierEvent innerEvent = new ItemAttributeModifierEvent(stored, existingMods);
-                net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(innerEvent);
-
-                for (ItemAttributeModifiers.Entry ae : innerEvent.getModifiers()) {
-                    var attrValue = ae.attribute().value();
-                    if (attrValue == net.minecraft.world.entity.ai.attributes.Attributes.ARMOR.value())
-                        bonusArmor += ae.modifier().amount();
-                    else if (attrValue == net.minecraft.world.entity.ai.attributes.Attributes.ARMOR_TOUGHNESS.value())
-                        bonusToughness += ae.modifier().amount();
-                    else if (attrValue == net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE.value())
-                        bonusKnockback += ae.modifier().amount();
                 }
             }
 
